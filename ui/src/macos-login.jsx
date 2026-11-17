@@ -230,7 +230,10 @@ export function MacOSLogin({ disabled, initialSetup = false, installRecovery = f
           setFrameError("");
         }
         if (r.error) setFrameError(r.error);
-        timer = setTimeout(poll, 550);
+        // Maintenance frames already include two guest-side window checks.
+        // Keep the extra idle time short so authorization controls respond
+        // promptly without allowing overlapping capture requests.
+        timer = setTimeout(poll, maintenance ? 150 : 550);
       } catch (e) {
         if (alive && lease.current?.session === session) end(e.message);
       }

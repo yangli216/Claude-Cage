@@ -94,6 +94,13 @@ enum MacMaintenance {
             code != nil && requirement != nil && SecCodeCheckValidity(code!, [], requirement!) == errSecSuccess
     }
 
+    private static func verifiedWindowServer(_ pid: pid_t) -> Bool {
+        var code: SecCode?, requirement: SecRequirement?
+        return SecRequirementCreateWithString("anchor apple and identifier \"com.apple.WindowServer\"" as CFString, [], &requirement) == errSecSuccess &&
+            SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributePid as String: pid] as CFDictionary, [], &code) == errSecSuccess &&
+            code != nil && requirement != nil && SecCodeCheckValidity(code!, [], requirement!) == errSecSuccess
+    }
+
     static func run(_ operation: String, purpose: String) throws -> [String: Any] {
         try requireGuest()
         let session = try consoleSession()
@@ -150,6 +157,11 @@ enum MacMaintenance {
             }
             if owner != front.processIdentifier {
                 #if arch(x86_64)
+                if let owner, window[kCGWindowLayer as String] as? Int == 2147483630,
+                    bounds.width <= 64, bounds.height <= 64,
+                    macMaintenanceCursorSurface(appleSigned: verifiedWindowServer(owner),
+                    layer: window[kCGWindowLayer as String] as? Int ?? -1,
+                    bounds: bounds, cursor: CGEvent(source: nil)?.location) { continue }
                 if let owner, let app = NSRunningApplication(processIdentifier: owner),
                    let bundle = app.bundleIdentifier,
                    macMaintenanceCompositorSurface(bundle: bundle,

@@ -113,7 +113,7 @@ enum MacSetupPassword {
               applications.contains(hostBundle) else { return false }
         if fieldPID == hostPID { return true }
         return hostBundle == "com.apple.systempreferences" && appleSigned &&
-            ["com.apple.settings.PrivacySecurity.extension", "com.apple.extensionkit.AppExtensionManagement"].contains(fieldBundle)
+            ["com.apple.settings.PrivacySecurity.extension", "com.apple.extensionkit.AppExtensionManagement", "com.apple.Sharing-Settings.extension"].contains(fieldBundle)
     }
 
     static func passwordFocused(_ app: NSRunningApplication, window: CGRect) -> Bool {
@@ -141,27 +141,38 @@ enum MacSetupPassword {
             return abs(rect.minX - window.minX) < 1 && abs(rect.minY - window.minY) < 1 &&
                 abs(rect.width - window.width) < 1 && abs(rect.height - window.height) < 1
         }
-        guard let value = attribute(application, kAXFocusedUIElementAttribute), CFGetTypeID(value) == AXUIElementGetTypeID() else { return false }
-        let field = value as! AXUIElement
-        AXUIElementSetMessagingTimeout(field, 0.25)
-        var pid: pid_t = 0
-        guard AXUIElementGetPid(field, &pid) == .success,
-              attribute(field, kAXSubroleAttribute) as? String == kAXSecureTextFieldSubrole,
-              attribute(field, kAXEnabledAttribute) as? Bool == true,
-              let fieldBounds = bounds(field), window.contains(fieldBounds) else { return false }
-        let owner = pid == app.processIdentifier ? app : NSRunningApplication(processIdentifier: pid)
-        let ownerBundle = owner?.bundleIdentifier ?? ""
-        guard allowsPasswordProcess(hostBundle: bundle, hostPID: app.processIdentifier, fieldPID: pid,
-                                    fieldBundle: ownerBundle, appleSigned: owner.map { signed($0, bundle: ownerBundle) } ?? false) else { return false }
-        // System Settings embeds Apple settings extensions. Their secure field
-        // can omit AXWindow; AXParent links it to the host's authorization sheet.
-        if let raw = attribute(field, kAXWindowAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID(), ownsTarget(raw as! AXUIElement) { return true }
-        var ancestor = field
-        for _ in 0..<12 {
-            guard let raw = attribute(ancestor, kAXParentAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID() else { return false }
-            ancestor = raw as! AXUIElement
-            AXUIElementSetMessagingTimeout(ancestor, 0.25)
-            if ownsTarget(ancestor) { return true }
+        func isTargetPasswordField(_ value: CFTypeRef) -> Bool {
+            guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return false }
+            let field = value as! AXUIElement
+            AXUIElementSetMessagingTimeout(field, 0.25)
+            var pid: pid_t = 0
+            guard AXUIElementGetPid(field, &pid) == .success,
+                  attribute(field, kAXSubroleAttribute) as? String == kAXSecureTextFieldSubrole,
+                  attribute(field, kAXEnabledAttribute) as? Bool == true,
+                  let fieldBounds = bounds(field), window.contains(fieldBounds) else { return false }
+            let owner = pid == app.processIdentifier ? app : NSRunningApplication(processIdentifier: pid)
+            let ownerBundle = owner?.bundleIdentifier ?? ""
+            guard allowsPasswordProcess(hostBundle: bundle, hostPID: app.processIdentifier, fieldPID: pid,
+                                        fieldBundle: ownerBundle, appleSigned: owner.map { signed($0, bundle: ownerBundle) } ?? false) else { return false }
+            // System Settings embeds Apple settings extensions. Their secure field
+            // can omit AXWindow; AXParent links it to the host's authorization sheet.
+            if let raw = attribute(field, kAXWindowAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID(), ownsTarget(raw as! AXUIElement) { return true }
+            var ancestor = field
+            for _ in 0..<12 {
+                guard let raw = attribute(ancestor, kAXParentAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID() else { return false }
+                ancestor = raw as! AXUIElement
+                AXUIElementSetMessagingTimeout(ancestor, 0.25)
+                if ownsTarget(ancestor) { return true }
+            }
+            return false
+        }
+        // Some System Settings extensions expose focus only on the system-wide
+        // accessibility element. Both paths use the same process, signature,
+        // secure-field, geometry, and window-ownership checks above.
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.25)
+        for source in [application, system] {
+            if let value = attribute(source, kAXFocusedUIElementAttribute), isTargetPasswordField(value) { return true }
         }
         return false
     }
@@ -214,7 +225,7 @@ enum MacSetupPassword {
             catch let error as Failure where error.message == "setup_password_probe_request_invalid" { }
         }
         // System Settings may host a secure field in its signed Apple extension.
-        for extensionBundle in ["com.apple.settings.PrivacySecurity.extension", "com.apple.extensionkit.AppExtensionManagement"] {
+        for extensionBundle in ["com.apple.settings.PrivacySecurity.extension", "com.apple.extensionkit.AppExtensionManagement", "com.apple.Sharing-Settings.extension"] {
             guard allowsPasswordProcess(hostBundle: "com.apple.systempreferences", hostPID: 613, fieldPID: 731,
                                         fieldBundle: extensionBundle, appleSigned: true),
                   !allowsPasswordProcess(hostBundle: "com.apple.systempreferences", hostPID: 613, fieldPID: 731,

@@ -13,6 +13,22 @@ import (
 	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
 )
 
+func TestIntelMacOSCPUCompatibility(t *testing.T) {
+	const original = "host,-pdpe1gb,+hypervisor,vmware-cpuid-freq=on"
+	const compatible = "host,family=6,model=158,stepping=10,-pdpe1gb,+hypervisor,vmware-cpuid-freq=on"
+	for _, test := range []struct{ brand, want string }{
+		{"13th Gen Intel(R) Core(TM) i7-13700F", compatible},
+		{"Intel(R) Core(TM) i9-10910 CPU", original},
+		{"", original},
+	} {
+		args := []string{"-machine", "q35,accel=hvf", "-cpu", original}
+		applyIntelMacOSCPUCompatibility(args, test.brand)
+		if args[3] != test.want {
+			t.Errorf("brand %q: CPU = %q, want %q", test.brand, args[3], test.want)
+		}
+	}
+}
+
 func TestMacOSViewStopsWhenQEMUExits(t *testing.T) {
 	oldView, oldOwns := MacOSOffscreenView, OwnsMacOSOffscreenView
 	t.Cleanup(func() { MacOSOffscreenView, OwnsMacOSOffscreenView = oldView, oldOwns })

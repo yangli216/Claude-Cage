@@ -20,3 +20,10 @@ func selectMacChromeCaptureWindow(_ candidates: [MacChromeCaptureCandidate]) -> 
     return candidates.filter { $0.frame.width >= 320 && $0.frame.height >= 240 }
         .max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }?.id
 }
+
+// Ignore Chrome's transient tooltip and suggestion surfaces when identifying
+// the real application window under a point. Fail closed if accessibility did
+// not identify a real window, or if another real window is in front.
+func chromeInputTargetsWindow(_ point: CGPoint, target: UInt32, candidates: [MacChromeCaptureCandidate]) -> Bool {
+    candidates.first { $0.applicationWindow && $0.frame.contains(point) }?.id == target
+}

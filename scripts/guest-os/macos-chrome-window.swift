@@ -259,13 +259,19 @@ final class MacChromeWindow {
         // focused Chrome controls; prevent a stale frame hitting another
         // top-level window of the same Chrome process.
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String:Any]] ?? []
-        let foremost = windows.first { info in
+        let bounds = macApplicationWindowBounds(pid)
+        let candidates = windows.compactMap { info -> MacChromeCaptureCandidate? in
             guard info[kCGWindowOwnerPID as String] as? pid_t == pid, info[kCGWindowLayer as String] as? Int == 0,
+                  let id = info[kCGWindowNumber as String] as? CGWindowID,
                   let box = info[kCGWindowBounds as String] as? NSDictionary,
-                  let rect = CGRect(dictionaryRepresentation: box) else { return false }
-            return rect.contains(point)
+                  let rect = CGRect(dictionaryRepresentation: box) else { return nil }
+            let actual = bounds.contains { bounds in
+                abs(bounds.minX-rect.minX)<1 && abs(bounds.minY-rect.minY)<1 &&
+                abs(bounds.width-rect.width)<1 && abs(bounds.height-rect.height)<1
+            }
+            return MacChromeCaptureCandidate(id: id, frame: rect, applicationWindow: actual, focused: false)
         }
-        return foremost?[kCGWindowNumber as String] as? CGWindowID == window
+        return chromeInputTargetsWindow(point, target: window, candidates: candidates)
     }
 
     func window() async throws -> SCWindow {

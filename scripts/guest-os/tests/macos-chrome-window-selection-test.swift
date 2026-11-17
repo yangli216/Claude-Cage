@@ -14,6 +14,10 @@ struct ChromeWindowSelectionTest {
         precondition(selectMacChromeCaptureWindow([tooltip, noAccessibility]) == 1)
         precondition(selectMacChromeCaptureWindow([tooltip]) == nil)
         precondition(selectMacChromeCaptureWindow([]) == nil)
+        precondition(chromeInputTargetsWindow(CGPoint(x: 820, y: 30), target: 1, candidates: [tooltip, main]))
+        precondition(!chromeInputTargetsWindow(CGPoint(x: 820, y: 30), target: 1, candidates: [tooltip]))
+        precondition(!chromeInputTargetsWindow(CGPoint(x: 60, y: 60), target: 1, candidates: [background, main]))
+        precondition(!chromeInputTargetsWindow(CGPoint(x: 1200, y: 30), target: 1, candidates: [main]))
         print("Chrome tooltip, login popup, background window and revoked Accessibility selection passed.")
     }
 }

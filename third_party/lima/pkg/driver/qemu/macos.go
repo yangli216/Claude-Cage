@@ -82,7 +82,28 @@ func macOSCmdline(ctx context.Context, cfg Config, options *limatype.QEMUMacOSOp
 		return "", nil, errors.New("QEMU lacks the required Intel macOS GPU, HVF or isolated datagram network support")
 	}
 	args, err := macOSArguments(cfg, options)
+	if err == nil {
+		if brand, probeErr := exec.CommandContext(ctx, "/usr/sbin/sysctl", "-n", "machdep.cpu.brand_string").Output(); probeErr == nil {
+			applyIntelMacOSCPUCompatibility(args, string(brand))
+		}
+	}
 	return exe, args, err
+}
+
+// macOS 15's Intel kernel rejects Raptor Lake's native CPU model. Present the
+// Coffee Lake model used by supported Intel Macs while retaining host features.
+// Limit the workaround to the verified 13th-generation host; other hosts keep
+// their existing CPU identity.
+func applyIntelMacOSCPUCompatibility(args []string, brand string) {
+	if !strings.Contains(brand, "13th Gen Intel") {
+		return
+	}
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "-cpu" && args[i+1] == "host,-pdpe1gb,+hypervisor,vmware-cpuid-freq=on" {
+			args[i+1] = "host,family=6,model=158,stepping=10,-pdpe1gb,+hypervisor,vmware-cpuid-freq=on"
+			return
+		}
+	}
 }
 
 // Keep this separate from capability probing so tests can inspect the actual
